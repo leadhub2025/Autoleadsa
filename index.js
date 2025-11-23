@@ -1,7 +1,7 @@
-// index.js (Express Serverless Function with JSON Output)
+// index.js (Full code with robust error handling)
 
 import 'dotenv/config'; 
-import { GoogleGenAI, Type } from '@google/genai'; // <-- Import 'Type'
+import { GoogleGenAI, Type } from '@google/genai'; 
 import express from 'express'; 
 
 const app = express();
@@ -53,11 +53,77 @@ const EMAIL_SCHEMA = {
   required: ["subject", "body_html", "value_proposition", "lead_profile"]
 };
 
-// ... existing app.get('/api/generate', async (req, res) => { ...
+// ----------------------------------------------------
+// Define the API Endpoint (WITH STABILITY FIX)
+// ----------------------------------------------------
+
+app.get('/api/generate', async (req, res) => {
+    
+    const model = "gemini-2.5-flash"; 
+    
+    // Get the dynamic topic from the URL query parameters
+    const topic = req.query.topic;
+
+    if (!topic) {
+        return res.status(400).json({
+            success: false,
+            message: "Missing 'topic' query parameter. Example usage: /api/generate?topic=new marketing agency"
+        });
+    }
 
     // Construct the prompt (UPDATED INSTRUCTION)
     const prompt = `Generate a cold email, including the subject line, body, and a detailed lead profile, for a lead generation tool named Autoleadsa1, targeting a lead in the industry: "${topic}". Ensure the tone is professional, the email focuses on solving the primary challenge, and the lead profile is fully accurate based on the industry.`;
 
-// ... rest of the app.get function remains the same ...
+    try {
+        const response = await ai.models.generateContent({
+            model: model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json", 
+                responseSchema: EMAIL_SCHEMA, 
+            }
+        });
+
+        // --- START ROBUST JSON PARSING ---
+        let parsedJson;
+        try {
+            // Attempt to parse the text response
+            parsedJson = JSON.parse(response.text);
+        } catch (jsonError) {
+            console.error("JSON PARSE FAILED. Raw Gemini Text:", response.text);
+            console.error("Parsing Error:", jsonError);
+
+            // Respond gracefully instead of crashing the function
+            return res.status(502).json({
+                success: false,
+                message: "Gemini API returned malformed JSON. Try refining the prompt or regenerating.",
+                raw_response: response.text
+            });
+        }
+        // --- END ROBUST JSON PARSING ---
+
+
+        res.status(200).json({
+            success: true,
+            topic: topic,
+            generated_data: parsedJson // Send the structured data
+        });
+
+    } catch (error) {
+        // This catches API connection/key errors
+        console.error("Gemini API Connection Error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to connect to Gemini API. Check API key/permissions.",
+            error: error.message
+        });
+    }
+});
+
+// Root path handler
+app.get('/', (req, res) => {
+    res.send("Autoleadsa1 API is running. Use the /api/generate?topic=YOUR_TOPIC endpoint to get started.");
+});
+
 
 export default app;
