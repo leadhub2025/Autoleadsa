@@ -5,3 +5,4 @@
 
 # Environment variables (Crucial! Keeps your key private)
 .env
+.vercel
